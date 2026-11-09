@@ -1,0 +1,5 @@
+DayForge APK - proyecto para compilar en GitHub
+Seguí los pasos que te pasó Claude en el chat. Resumen:
+1) Subí TODOS estos archivos a un repositorio nuevo de GitHub (menos LEEME.txt si querés).
+2) Creá el archivo .github/workflows/android.yml con el contenido de android.yml (si no se subió solo).
+3) En la pestaña Actions esperá que termine "Compilar APK" y descargá DayForge-apk.
