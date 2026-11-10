@@ -3030,9 +3030,11 @@ function zenClockStop(){if(!ZTMR)return;zenTick();clearInterval(ZTMR);ZTMR=null;
    window.DayForgeNative.setAppBlock(true|false) para que haga algo. */
 function appBlockToggle(){
   const nat=window.DayForgeNative;
-  if(!nat||typeof nat.setAppBlock!=='function'){toast('El bloqueo de apps se activa desde la app del celular, que todavía no está conectada.');return}
+  if(!nat||typeof nat.setAppBlock!=='function'){toast('El bloqueo de apps solo funciona en la app instalada en el celular.');return}
   const next=!BLOCKED;
-  try{nat.setAppBlock(next)}catch(e){toast('No se pudo cambiar el bloqueo de apps');return}
+  let ok;
+  try{ok=nat.setAppBlock(next)}catch(e){toast('No se pudo cambiar el bloqueo de apps');return}
+  if(ok===false){toast('Activá "DayForge - Modo enfoque" en Accesibilidad y volvé a tocar el botón');return}
   BLOCKED=next;
   const b=document.getElementById('zm-block');
   if(b){b.setAttribute('aria-pressed',next?'true':'false');const l=b.querySelector('span');if(l)l.textContent=next?'Apps bloqueadas':'Bloquear apps'}
@@ -3064,7 +3066,7 @@ function zenApply(focusSel){
   const f=focusSel?document.querySelector(focusSel):null;
   if(f){try{f.focus({preventScroll:true})}catch(e){}}
 }
-function zenOpen(){ZEN=true;ZENV='menu';zenClockStart();zenApply('.zm-block')}
+function zenOpen(){ZEN=true;ZENV='menu';zenClockStart();try{const n=window.DayForgeNative;if(n&&n.isBlocking)BLOCKED=!!n.isBlocking()}catch(e){}zenApply('.zm-block')}
 function zenBack(){ZENV='menu';zenApply('.zm-btn')}
 function zenClose(){ZEN=false;zenClockStop();zenStatsRefresh();zenApply('#fd-main')}
 function zenView(name){ZEN=true;ZENV='view';zenClockStart();zenApply('');go(name)}
