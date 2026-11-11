@@ -34,18 +34,99 @@ jobs:
       - name: Crear proyecto Android
         run: npx cap add android
 
-      - name: Íconos y pantalla de inicio
-        continue-on-error: true
-        run: npx capacitor-assets generate --android
+      - name: Agregar bloqueo de apps (modo enfoque)
+        run: |
+          # Todo el código nativo del bloqueador vive acá y se copia al proyecto Android en cada compilación.
+          mkdir -p android/app/src/main/java/com/dayforge/app
+          cat > android/app/src/main/java/com/dayforge/app/DayForgeNative.java <<'DAYFORGE_EOF'
+          package com.dayforge.app;
 
-      - name: Sincronizar
-        run: npx cap sync android
+          import android.content.ComponentName;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.SharedPreferences;
+          import android.provider.Settings;
+          import android.text.TextUtils;
+          import android.webkit.JavascriptInterface;
 
-      - name: Compilar APK
-        working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+          /** Puente entre la web (window.DayForgeNative) y el bloqueo de apps. */
+          public class DayForgeNative {
+              static final String PREFS = "dayforge_block";
+              static final String KEY_ON = "on";
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: DayForge-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+              private final Context ctx;
+
+              public DayForgeNative(Context context) {
+                  this.ctx = context.getApplicationContext();
+              }
+
+              static boolean isOn(Context c) {
+                  return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ON, false);
+              }
+
+              static boolean serviceEnabled(Context c) {
+                  String list = Settings.Secure.getString(c.getContentResolver(),
+                          Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+                  if (list == null) return false;
+                  ComponentName me = new ComponentName(c, BlockerService.class);
+                  TextUtils.SimpleStringSplitter sp = new TextUtils.SimpleStringSplitter(':');
+                  sp.setString(list);
+                  while (sp.hasNext()) {
+                      ComponentName cn = ComponentName.unflattenFromString(sp.next());
+                      if (cn != null && cn.equals(me)) return true;
+                  }
+                  return false;
+              }
+
+              /** true = quedó como pedías. false = falta dar el permiso (se abre Accesibilidad). */
+              @JavascriptInterface
+              public boolean setAppBlock(boolean on) {
+                  if (on && !serviceEnabled(ctx)) {
+                      openPermissionSettings();
+                      return false;
+                  }
+                  SharedPreferences.Editor e = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
+                  e.putBoolean(KEY_ON, on).apply();
+                  return true;
+              }
+
+              @JavascriptInterface
+              public boolean isBlocking() {
+                  return isOn(ctx) && serviceEnabled(ctx);
+              }
+
+              @JavascriptInterface
+              public boolean hasPermission() {
+                  return serviceEnabled(ctx);
+              }
+
+              @JavascriptInterface
+              public void openPermissionSettings() {
+                  Intent i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+                  i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                  ctx.startActivity(i);
+              }
+          }
+          DAYFORGE_EOF
+          mkdir -p android/app/src/main/java/com/dayforge/app
+          cat > android/app/src/main/java/com/dayforge/app/BlockerService.java <<'DAYFORGE_EOF'
+          package com.dayforge.app;
+
+          import android.accessibilityservice.AccessibilityService;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ResolveInfo;
+          import android.telecom.TelecomManager;
+          import android.view.accessibility.AccessibilityEvent;
+          import android.view.inputmethod.InputMethodInfo;
+          import android.view.inputmethod.InputMethodManager;
+
+          import java.util.HashSet;
+          import java.util.List;
+          import java.util.Set;
+
+          /**
+           * Servicio de accesibilidad: solo mira QUÉ app se abrió (nombre del paquete).
+           * No lee pantallas, textos ni contraseñas (canRetrieveWindowContent = false).
+           */
